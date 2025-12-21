@@ -48,19 +48,19 @@ internal class PlayerStatuses : Topic, IDisposable
     public void Dispose() { Service.PlayerEvents.LocalPlayerUpdated -= PlayerUpdated; }
 
     // A custom serializer is required to safely read a status because it has many properties that don't make sense to send.
-    private class StatusSerializer : JsonConverter<Status>
+    private class StatusSerializer : JsonConverter<IStatus>
     {
-        public override Status Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) { throw new NotImplementedException(); }
+        public override IStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) { throw new NotImplementedException(); }
 
-        public override void Write(Utf8JsonWriter writer, Status value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, IStatus value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
-            writer.WriteString("Name", value.GameData.Value.Name);
+            writer.WriteString("Name",       value.GameData.Value.Name);
             writer.WriteNumber("StatusId",      value.StatusId);
             writer.WriteNumber("Param",         value.Param);
             writer.WriteNumber("RemainingTime", value.RemainingTime);
             writer.WriteNumber("SourceID",      value.SourceId);
-            writer.WriteNumber("Parameter",    value.Param);
+            writer.WriteNumber("Parameter",     value.Param);
             writer.WriteEndObject();
         }
     }
