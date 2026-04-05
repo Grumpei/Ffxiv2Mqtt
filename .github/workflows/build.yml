@@ -1,0 +1,49 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ffxiv2Mqtt/Ffxiv2Mqtt.csproj
+
+      - name: Build
+        run: dotnet build ffxiv2Mqtt/Ffxiv2Mqtt.csproj --configuration Release --no-restore
+
+      - name: Collect output files
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact
+          Copy-Item ffxiv2Mqtt/bin/Release/Ffxiv2Mqtt/* -Destination artifact/ -Recurse
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ffxiv2Mqtt-plugin
+          path: artifact/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Build #${{ github.run_number }}"
+          body: "Automatischer Build aus dem Fork mit CrossRealmParty-Unterstützung."
+          files: artifact/*
+          make_latest: true
