@@ -21,11 +21,21 @@ jobs:
         with:
           dotnet-version: '8.x'
 
+      - name: Download Dalamud
+        run: |
+          Invoke-WebRequest -Uri "https://goatcorp.github.io/dalamud-distrib/stg/latest.zip" -OutFile dalamud.zip
+          Expand-Archive -Path dalamud.zip -DestinationPath dalamud -Force
+        shell: pwsh
+
       - name: Restore dependencies
         run: dotnet restore ffxiv2Mqtt/Ffxiv2Mqtt.csproj
+        env:
+          DALAMUD_HOME: ${{ github.workspace }}/dalamud
 
       - name: Build
         run: dotnet build ffxiv2Mqtt/Ffxiv2Mqtt.csproj --configuration Release --no-restore
+        env:
+          DALAMUD_HOME: ${{ github.workspace }}/dalamud
 
       - name: Collect output files
         run: |
@@ -44,6 +54,6 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: "Build #${{ github.run_number }}"
-          body: "Automatischer Build aus dem Fork mit CrossRealmParty-Unterstützung."
+          body: "Automatischer Build mit CrossRealmParty-Unterstützung."
           files: artifact/*
           make_latest: true
