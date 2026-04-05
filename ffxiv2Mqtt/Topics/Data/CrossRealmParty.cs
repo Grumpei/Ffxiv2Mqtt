@@ -22,7 +22,9 @@ internal unsafe class CrossRealmParty : Topic, IDisposable
         if (proxy == null)
             return;
 
-        var count = (int)proxy->GetTotalMemberCount();
+        // GetPartyMemberCount() returns the total number of members
+        // across all cross-realm groups (0-8 for a full party).
+        var count = (int)InfoProxyCrossRealm.GetPartyMemberCount();
 
         if (count == crossRealmCount)
             return;
