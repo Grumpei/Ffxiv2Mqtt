@@ -1,19 +1,29 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Dalamud.Game;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
-using FFXIVClientStructs.FFXIV.Client.System.String;
-using FFXIVClientStructs.FFXIV.Client.UI;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
 
 namespace Ffxiv2Mqtt.Services;
 
-public sealed unsafe class MqttCommandReceiver : IDisposable
+/// <summary>
+/// Subscribes to MQTT and forwards payloads as in-game commands.
+/// Topic: ffxiv/Command/Chat  (or ffxiv/{ClientId}/Command/Chat)
+/// </summary>
+public sealed class MqttCommandReceiver : IDisposable
 {
+    // Signature for ProcessChatBox - stable across patches
+    // Same sig used by SomethingNeedDoing, QoLBar, etc.
+    private delegate void ProcessChatBoxDelegate(nint uiModule, nint message, nint unused, byte a4);
+    private readonly ProcessChatBoxDelegate? processChatBox;
+    private readonly nint uiModulePtr;
+
     private readonly IMqttClientWrapper mqttClient;
     private readonly ICommandManager    commandManager;
     private readonly IChatGui           chatGui;
@@ -21,6 +31,7 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
     private readonly IFramework         framework;
     private readonly IPluginLog         log;
     private readonly Configuration      config;
+    private readonly ISigScanner        sigScanner;
 
     private string subscribedTopic = string.Empty;
 
@@ -31,7 +42,8 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
         IClientState       clientState,
         IFramework         framework,
         IPluginLog         log,
-        Configuration      config)
+        Configuration      config,
+        ISigScanner        sigScanner)
     {
         this.mqttClient     = mqttClient;
         this.commandManager = commandManager;
@@ -40,6 +52,20 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
         this.framework      = framework;
         this.log            = log;
         this.config         = config;
+        this.sigScanner     = sigScanner;
+
+        // Resolve ProcessChatBox function pointer via signature scan
+        try
+        {
+            var fnPtr = sigScanner.ScanText("48 89 5C 24 ?? 57 48 83 EC 20 48 8B FA 48 8B D9 45 84 C9");
+            processChatBox = Marshal.GetDelegateForFunctionPointer<ProcessChatBoxDelegate>(fnPtr);
+            uiModulePtr    = sigScanner.GetStaticAddressFromSig("48 8B 0D ?? ?? ?? ?? 48 8D 54 24 ?? 48 83 C1 10 E8");
+            log.Debug("[CommandReceiver] ProcessChatBox resolved.");
+        }
+        catch (Exception ex)
+        {
+            log.Error(ex, "[CommandReceiver] Could not resolve ProcessChatBox signature.");
+        }
 
         this.mqttClient.Connected       += OnConnected;
         this.mqttClient.Disconnected    += OnDisconnected;
@@ -74,6 +100,7 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
             return;
 
         var raw = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment).Trim();
+        // Strip surrounding quotes HA may add
         if (raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
             raw = raw[1..^1].Trim();
         if (string.IsNullOrWhiteSpace(raw) || raw.Length > 500) return;
@@ -90,11 +117,13 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
 
         if (payload.StartsWith('/'))
         {
+            // Try Dalamud commands first (plugin commands like /xlsettings etc.)
             if (commandManager.ProcessCommand(payload))
             {
                 log.Debug($"[CommandReceiver] Dalamud command: {payload}");
                 return;
             }
+            // Fall back to native game ChatBox (handles /gearset, /ac, /wait, etc.)
             SendToGameChatBox(payload);
         }
         else
@@ -109,21 +138,25 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
 
     private void SendToGameChatBox(string message)
     {
+        if (processChatBox == null)
+        {
+            log.Error("[CommandReceiver] ProcessChatBox not available.");
+            chatGui.PrintError($"[MQTT] Cannot send native command: {message}");
+            return;
+        }
+
         try
         {
-            var uiModule = UIModule.Instance();
-            if (uiModule == null) { log.Error("[CommandReceiver] UIModule null."); return; }
-
-            var utf8 = new Utf8String();
-            utf8.SetString(message);
-            uiModule->ProcessChatBoxEntry(&utf8);
-            utf8.Dtor();
-
-            log.Debug($"[CommandReceiver] Native command: {message}");
+            var bytes  = Encoding.UTF8.GetBytes(message + "\0");
+            var handle = Marshal.AllocHGlobal(bytes.Length + 32);
+            Marshal.Copy(bytes, 0, handle, bytes.Length);
+            processChatBox(uiModulePtr, handle, nint.Zero, 0);
+            Marshal.FreeHGlobal(handle);
+            log.Debug($"[CommandReceiver] Native command sent: {message}");
         }
         catch (Exception ex)
         {
-            log.Error(ex, $"[CommandReceiver] Failed: {message}");
+            log.Error(ex, $"[CommandReceiver] SendToGameChatBox failed: {message}");
             chatGui.PrintError($"[MQTT] Failed: {message}");
         }
     }
