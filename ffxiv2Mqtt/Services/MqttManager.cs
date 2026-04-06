@@ -32,12 +32,12 @@ public class MqttManager : IDisposable, IMqttClientWrapper
 
     public async Task SubscribeAsync(string topic, MqttQualityOfServiceLevel qos)
     {
-        var opts = new MqttClientSubscribeOptionsBuilder()
-            .WithTopicFilter(f => f.WithTopic(topic).WithQualityOfServiceLevel(qos))
+        var filter = new MqttTopicFilterBuilder()
+            .WithTopic(topic)
+            .WithQualityOfServiceLevel(qos)
             .Build();
-        await mqttClient.SubscribeAsync(opts);
+        await mqttClient.SubscribeAsync(new[] { filter });
     }
-
 
     public MqttManager(Configuration configuration)
     {
@@ -49,7 +49,9 @@ public class MqttManager : IDisposable, IMqttClientWrapper
         mqttClient = mqttFactory.CreateManagedMqttClient();
 
         mqttClient.ConnectedAsync        += LogConnectedAsync;
+        mqttClient.ConnectedAsync    += _ => { FireConnected();    return Task.CompletedTask; };
         mqttClient.ConnectingFailedAsync += LogConnectingFailedAsync;
+        mqttClient.DisconnectedAsync += _ => { FireDisconnected(); return Task.CompletedTask; };
         mqttClient.DisconnectedAsync     += LogDisconnectedAsync;
 
         AddMessageReceivedHandler(ConfiguredMessageReceivedHandler);
@@ -63,7 +65,7 @@ public class MqttManager : IDisposable, IMqttClientWrapper
     private static Task LogConnectedAsync(EventArgs e)
     {
         Service.Log.Information("Connected to MQTT broker");
-        Connected?.Invoke(this, EventArgs.Empty);
+        // Connected event is fired via non-static context
         return Task.CompletedTask;
     }
 
@@ -81,6 +83,9 @@ public class MqttManager : IDisposable, IMqttClientWrapper
             Service.Log.Error($"Unexpected disconnect from MQTT broker: {e.Reason}");
         return Task.CompletedTask;
     }
+
+    private void FireConnected() => Connected?.Invoke(this, EventArgs.Empty);
+    private void FireDisconnected() => Disconnected?.Invoke(this, EventArgs.Empty);
 
     private Task ConfiguredMessageReceivedHandler(MqttApplicationMessageReceivedEventArgs e)
     {
