@@ -5,6 +5,7 @@ using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
 using MQTTnet;
+using MQTTnet.Client;
 using MQTTnet.Protocol;
 
 namespace Ffxiv2Mqtt.Services;
@@ -140,14 +141,12 @@ public sealed class MqttCommandReceiver : IDisposable
 
     private void ExecuteCommand(string command)
     {
-        // 1. Try Dalamud-registered commands first
         if (commandManager.ProcessCommand(command))
         {
             log.Debug($"[CommandReceiver] Dispatched Dalamud command: {command}");
             return;
         }
 
-        // 2. Fall back to native game input (/gearset, /micon, etc.)
         try
         {
             ChatBoxHelper.SendMessage(command);
