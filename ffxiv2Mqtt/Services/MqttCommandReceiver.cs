@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.System.String;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using MQTTnet;
 using MQTTnet.Client;
@@ -11,16 +12,6 @@ using MQTTnet.Protocol;
 
 namespace Ffxiv2Mqtt.Services;
 
-/// <summary>
-/// Subscribes to the MQTT command topic and forwards received payloads
-/// into the FFXIV in-game chat / command pipeline.
-///
-/// Topic:   ffxiv/Command/Chat  (or ffxiv/{ClientId}/Command/Chat)
-///
-/// Payload rules:
-///   Starts with '/'  -> executed as slash command via ProcessCommand or ChatBox
-///   Plain text       -> printed to local chat with [MQTT] prefix
-/// </summary>
 public sealed unsafe class MqttCommandReceiver : IDisposable
 {
     private readonly IMqttClientWrapper mqttClient;
@@ -65,51 +56,27 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
 
     private async void OnConnected(object? sender, EventArgs e)
     {
-        if (!config.EnableCommandReceiver)
-        {
-            log.Debug("[CommandReceiver] Disabled in config.");
-            return;
-        }
+        if (!config.EnableCommandReceiver) return;
         subscribedTopic = BuildTopic();
         try
         {
             await mqttClient.SubscribeAsync(subscribedTopic, MqttQualityOfServiceLevel.AtLeastOnce);
             log.Information($"[CommandReceiver] Subscribed to '{subscribedTopic}'");
         }
-        catch (Exception ex)
-        {
-            log.Error(ex, "[CommandReceiver] Failed to subscribe.");
-        }
+        catch (Exception ex) { log.Error(ex, "[CommandReceiver] Subscribe failed."); }
     }
 
-    private void OnDisconnected(object? sender, EventArgs e)
-    {
-        subscribedTopic = string.Empty;
-    }
+    private void OnDisconnected(object? sender, EventArgs e) => subscribedTopic = string.Empty;
 
     private void OnMessageReceived(object? sender, MqttApplicationMessageReceivedEventArgs e)
     {
-        var topic = e.ApplicationMessage.Topic;
-        if (!string.Equals(topic, subscribedTopic, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(e.ApplicationMessage.Topic, subscribedTopic, StringComparison.OrdinalIgnoreCase))
             return;
 
         var raw = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment).Trim();
-
-        // Strip surrounding quotes that Home Assistant may add
         if (raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
             raw = raw[1..^1].Trim();
-
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            log.Warning("[CommandReceiver] Empty payload – ignored.");
-            return;
-        }
-
-        if (raw.Length > 500)
-        {
-            log.Warning($"[CommandReceiver] Payload too long ({raw.Length}) – ignored.");
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 500) return;
 
         log.Debug($"[CommandReceiver] Received: {raw}");
         framework.RunOnFrameworkThread(() => Execute(raw));
@@ -118,28 +85,20 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
     private void Execute(string payload)
     {
 #pragma warning disable CS0618
-        if (clientState.LocalPlayer == null)
+        if (clientState.LocalPlayer == null) return;
 #pragma warning restore CS0618
-        {
-            log.Warning("[CommandReceiver] No player logged in – ignored.");
-            return;
-        }
 
         if (payload.StartsWith('/'))
         {
-            // 1. Try Dalamud-registered commands (plugin commands)
             if (commandManager.ProcessCommand(payload))
             {
-                log.Debug($"[CommandReceiver] Dalamud command executed: {payload}");
+                log.Debug($"[CommandReceiver] Dalamud command: {payload}");
                 return;
             }
-
-            // 2. Native game command via UIModule (same as typing in chat box)
-            SendNativeCommand(payload);
+            SendToGameChatBox(payload);
         }
         else
         {
-            // Plain text: print to local chat
             var msg = new SeStringBuilder()
                 .AddUiForeground("[MQTT] ", 32)
                 .AddText(payload)
@@ -148,29 +107,24 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
         }
     }
 
-    private void SendNativeCommand(string command)
+    private void SendToGameChatBox(string message)
     {
         try
         {
             var uiModule = UIModule.Instance();
-            if (uiModule == null)
-            {
-                log.Error("[CommandReceiver] UIModule unavailable.");
-                return;
-            }
+            if (uiModule == null) { log.Error("[CommandReceiver] UIModule null."); return; }
 
-            var bytes = Encoding.UTF8.GetBytes(command + "\0");
-            fixed (byte* ptr = bytes)
-            {
-                var ptrInt = (nint)ptr;
-                uiModule->ProcessChatBoxEntry((Utf8String*)&ptrInt);
-            }
-            log.Debug($"[CommandReceiver] Native command sent: {command}");
+            var utf8 = new Utf8String();
+            utf8.SetString(message);
+            uiModule->ProcessChatBoxEntry(&utf8);
+            utf8.Dtor();
+
+            log.Debug($"[CommandReceiver] Native command: {message}");
         }
         catch (Exception ex)
         {
-            log.Error(ex, $"[CommandReceiver] Failed to send native command: {command}");
-            chatGui.PrintError($"[MQTT] Command failed: {command}");
+            log.Error(ex, $"[CommandReceiver] Failed: {message}");
+            chatGui.PrintError($"[MQTT] Failed: {message}");
         }
     }
 
