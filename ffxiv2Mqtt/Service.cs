@@ -29,6 +29,7 @@ public class Service
     [PluginService] public static ICondition Condition { get; private set; }
     [PluginService] public static INotificationManager NotificationManager { get; private set; }
     [PluginService] public static IPluginLog Log { get; private set; }
+    [PluginService] public static IGameInteropProvider GameInterop { get; private set; }
     [PluginService] public static IAddonLifecycle AddonLifecycle { get; private set; }
 }
 #pragma warning restore CS8618
