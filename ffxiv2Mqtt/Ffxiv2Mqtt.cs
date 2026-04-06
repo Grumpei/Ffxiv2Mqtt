@@ -46,7 +46,7 @@ public class Ffxiv2Mqtt : IDalamudPlugin
         PluginInterface.Create<Service>();
         Service.PlayerEvents = new PlayerEvents();
         Service.MqttManager  = new MqttManager(Configuration);
-        Service.CommandReceiver = new MqttCommandReceiver(Service.MqttManager, Service.CommandManager, Service.ChatGui, Service.ClientState, Service.Framework, Service.Log, Configuration);
+        Service.CommandReceiver = new MqttCommandReceiver(Service.MqttManager, Service.CommandManager, Service.ChatGui, Service.PlayerState, Service.Framework, Service.Log, Configuration);
 
         if (Configuration.ConnectAtStartup)
             Service.MqttManager.ConnectToBroker();
