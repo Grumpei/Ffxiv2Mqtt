@@ -14,7 +14,7 @@ using MQTTnet.Protocol;
 
 namespace Ffxiv2Mqtt.Services;
 
-public class MqttManager
+public class MqttManager : IDisposable, IMqttClientWrapper
 {
     private readonly IManagedMqttClient mqttClient;
     private readonly Configuration      configuration;
@@ -24,6 +24,19 @@ public class MqttManager
     public bool IsConnected => mqttClient.IsConnected;
 
     public bool IsStarted => mqttClient.IsStarted;
+
+    // ── IMqttClientWrapper ───────────────────────────────────────
+    public event EventHandler? Connected;
+    public event EventHandler? Disconnected;
+    public event EventHandler<MqttApplicationMessageReceivedEventArgs>? MessageReceived;
+
+    public async Task SubscribeAsync(string topic, MqttQualityOfServiceLevel qos)
+    {
+        var opts = new MqttClientSubscribeOptionsBuilder()
+            .WithTopicFilter(f => f.WithTopic(topic).WithQualityOfServiceLevel(qos))
+            .Build();
+        await mqttClient.SubscribeAsync(opts);
+    }
 
 
     public MqttManager(Configuration configuration)
@@ -50,6 +63,7 @@ public class MqttManager
     private static Task LogConnectedAsync(EventArgs e)
     {
         Service.Log.Information("Connected to MQTT broker");
+        Connected?.Invoke(this, EventArgs.Empty);
         return Task.CompletedTask;
     }
 
@@ -71,6 +85,7 @@ public class MqttManager
     private Task ConfiguredMessageReceivedHandler(MqttApplicationMessageReceivedEventArgs e)
     {
         Service.Log.Information("Message received");
+        MessageReceived?.Invoke(this, e);
 
 
         var messagePattern = e.ApplicationMessage.Topic.Split('/');
@@ -274,6 +289,7 @@ public class MqttManager
         mqttClient.ConnectedAsync        -= LogConnectedAsync;
         mqttClient.ConnectingFailedAsync -= LogConnectingFailedAsync;
         mqttClient.DisconnectedAsync     -= LogDisconnectedAsync;
+        Disconnected?.Invoke(this, EventArgs.Empty);
 
         mqttClient.Dispose();
     }
