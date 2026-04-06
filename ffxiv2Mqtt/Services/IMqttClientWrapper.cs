@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using MQTTnet;
+using MQTTnet.Client;
 using MQTTnet.Protocol;
 
 namespace Ffxiv2Mqtt.Services;
