@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Dalamud.Game.Text;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
+using Dalamud.Game.ClientState;
 using MQTTnet;
 using MQTTnet.Client;
 using MQTTnet.Protocol;
@@ -32,7 +33,7 @@ public sealed class MqttCommandReceiver : IDisposable
     private readonly IMqttClientWrapper    mqttClient;
     private readonly ICommandManager       commandManager;
     private readonly IChatGui              chatGui;
-    private readonly IClientState          clientState;
+    private readonly IPlayerState          playerState;
     private readonly IFramework            framework;
     private readonly IPluginLog            log;
     private readonly Configuration         config;
@@ -43,7 +44,7 @@ public sealed class MqttCommandReceiver : IDisposable
         IMqttClientWrapper mqttClient,
         ICommandManager    commandManager,
         IChatGui           chatGui,
-        IClientState       clientState,
+        IPlayerState       playerState,
         IFramework         framework,
         IPluginLog         log,
         Configuration      config)
@@ -51,7 +52,7 @@ public sealed class MqttCommandReceiver : IDisposable
         this.mqttClient     = mqttClient;
         this.commandManager = commandManager;
         this.chatGui        = chatGui;
-        this.clientState    = clientState;
+        this.playerState    = playerState;
         this.framework      = framework;
         this.log            = log;
         this.config         = config;
@@ -120,7 +121,7 @@ public sealed class MqttCommandReceiver : IDisposable
 
     private void Execute(string payload)
     {
-        if (clientState.LocalPlayer == null)
+        if (playerState.IsNotLoaded)
         {
             log.Warning("[CommandReceiver] Command received but no player is logged in - ignored.");
             return;
