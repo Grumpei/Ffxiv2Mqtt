@@ -16,7 +16,7 @@ namespace Ffxiv2Mqtt.Services;
 /// Subscribes to MQTT and forwards payloads as in-game commands.
 /// Topic: ffxiv/Command/Chat  (or ffxiv/{ClientId}/Command/Chat)
 /// </summary>
-public sealed class MqttCommandReceiver : IDisposable
+public sealed unsafe class MqttCommandReceiver : IDisposable
 {
     // Signature for ProcessChatBox - stable across patches
     // Same sig used by SomethingNeedDoing, QoLBar, etc.
@@ -136,7 +136,7 @@ public sealed class MqttCommandReceiver : IDisposable
         }
     }
 
-    private void SendToGameChatBox(string message)
+    private unsafe void SendToGameChatBox(string message)
     {
         if (processChatBox == null)
         {
