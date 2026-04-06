@@ -31,4 +31,10 @@ public class Configuration : IPluginConfiguration
     public void Initialize(IDalamudPluginInterface pluginInterface) { this.pluginInterface = pluginInterface; }
 
     public void Save() { pluginInterface!.SavePluginConfig(this); }
+    /// <summary>
+    /// When true, the plugin subscribes to ffxiv/Command/Chat and
+    /// forwards incoming payloads to the in-game chat/command pipeline.
+    /// </summary>
+    public bool EnableCommandReceiver { get; set; } = true;
+
 }
