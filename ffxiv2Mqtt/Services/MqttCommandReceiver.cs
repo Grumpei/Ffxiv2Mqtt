@@ -20,7 +20,7 @@ namespace Ffxiv2Mqtt.Services;
 /// Native command dispatch mirrors XIVDeck's ChatHelper exactly:
 /// https://github.com/KazWolfe/XIVDeck/blob/main/FFXIVPlugin/Game/Chat/ChatHelper.cs
 /// </summary>
-public sealed unsafe class MqttCommandReceiver : IDisposable
+public sealed class MqttCommandReceiver : IDisposable
 {
     private readonly IMqttClientWrapper mqttClient;
     private readonly ICommandManager    commandManager;
@@ -122,7 +122,7 @@ public sealed unsafe class MqttCommandReceiver : IDisposable
     /// Mirrors XIVDeck ChatHelper.SendSanitizedChatMessage() exactly.
     /// Utf8String.FromString -> SanitizeString -> ProcessChatBoxEntry(msg, nint.Zero) -> Dtor(true)
     /// </summary>
-    private void SendNativeCommand(string command)
+    private unsafe void SendNativeCommand(string command)
     {
         try
         {
