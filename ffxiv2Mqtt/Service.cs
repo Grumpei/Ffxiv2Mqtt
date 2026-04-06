@@ -12,6 +12,7 @@ public class Service
 {
     internal static PlayerEvents PlayerEvents;
     internal static MqttManager MqttManager;
+    internal static MqttCommandReceiver CommandReceiver;
 
     [PluginService] public static IDalamudPluginInterface PluginInterface { get; private set; }
     [PluginService] public static IChatGui ChatGui { get; private set; }
